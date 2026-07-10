@@ -78,6 +78,16 @@
       }
       .note b { color: var(--text); }
 
+      .keyin {
+        width: 100%; padding: 11px 13px; border-radius: 10px; border: 1px solid var(--border);
+        background: var(--surface); color: var(--text); font-family: inherit; font-size: 14px; outline: none;
+        transition: border-color 0.2s;
+      }
+      .keyin:focus { border-color: var(--accent); }
+      .keystatus { font-size: 0.82rem; color: var(--muted); margin-top: 10px; }
+      .keystatus.ok { color: #34d399; }
+      .keystatus.err { color: #f87171; }
+
       .seg { display: flex; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 4px; }
       .seg button {
         flex: 1; padding: 8px 6px; border: 0; background: transparent; color: var(--muted); font-weight: 600;
@@ -142,10 +152,22 @@
         <div class="label">2 · Generate</div>
         <button class="btn btn-primary" id="generate" style="width:100%" disabled>Generate 3D model</button>
         <div class="note" id="genNote">
-          <b>Early preview.</b> Real image-to-3D (your photo → mesh, via an AI model like
-          TRELLIS / Hunyuan3D / Meshy) is the next step to connect. For now, Generate loads a
-          <b>sample device</b> so you can feel the ad-ready studio: turntable, lighting, transparent
-          background, and export.
+          Connect your <b>Meshy</b> key below to turn your photo into a real 3D model. Without a
+          key, Generate shows a <b>sample device</b> so you can still explore the studio.
+        </div>
+
+        <div class="label">Meshy AI · real image → 3D</div>
+        <input id="meshyKey" class="keyin" type="password" placeholder="Paste Meshy API key (msy_…) or proxy URL" autocomplete="off" spellcheck="false" />
+        <div class="row">
+          <button class="btn btn-ghost" id="saveKey">Save key</button>
+          <a class="btn btn-ghost" href="https://www.meshy.ai/settings/api" target="_blank" rel="noopener">Get a key ↗</a>
+        </div>
+        <div class="keystatus" id="keyStatus">Not connected — Generate shows the sample device.</div>
+        <div class="note">
+          Your key is stored <b>only in this browser</b> (localStorage) and sent straight to Meshy.
+          If your browser blocks the call (CORS), deploy the free proxy — see
+          <a href="https://github.com/zurlazar/animations/blob/main/docs/MESHY.md" target="_blank" rel="noopener" style="color:var(--accent)">docs/MESHY.md</a>.
+          Generation can take a minute and uses Meshy credits.
         </div>
 
         <div class="label">Background</div>
@@ -168,8 +190,8 @@
       </aside>
 
       <main class="stage" id="stage">
-        <div class="genmask" id="genmask"><div><div class="spinner"></div>Generating…</div></div>
-        <div class="badge"><span class="live"></span>Sample model · <span id="backend">…</span></div>
+        <div class="genmask" id="genmask"><div><div class="spinner"></div><span id="genText">Generating…</span></div></div>
+        <div class="badge"><span class="live"></span><span id="badgeLabel">Sample model</span> · <span id="backend">…</span></div>
       </main>
     </div>
 
