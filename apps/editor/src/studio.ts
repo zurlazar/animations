@@ -13,6 +13,14 @@
  * Credentials are stored only in this browser (localStorage) and sent straight
  * to the provider — never committed or proxied through us.
  */
+// @gradio/client expects Node globals (Buffer / process / global) that don't
+// exist in browsers. Shim them before that library is dynamically imported.
+import { Buffer as NodeBuffer } from "buffer";
+const _g = globalThis as unknown as { Buffer?: unknown; global?: unknown; process?: { env: Record<string, string> } };
+if (!_g.Buffer) _g.Buffer = NodeBuffer;
+if (!_g.global) _g.global = globalThis;
+if (!_g.process) _g.process = { env: {} };
+
 import { detectBackend } from "@animations/core";
 import * as THREE from "three";
 import { WebGPURenderer } from "three/webgpu";
