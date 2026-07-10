@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Image → 3D Studio — turn a photo of a device into a spinnable, ad-ready 3D model." />
+    <title>Image → 3D Studio · animations</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236366f1'/%3E%3Cstop offset='0.5' stop-color='%2322d3ee'/%3E%3Cstop offset='1' stop-color='%23a855f7'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='url(%23g)' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='3.5' fill='url(%23g)'/%3E%3C/svg%3E" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #05060a; --bg-soft: #0a0c14; --text: #eef2f8; --muted: #9aa4b6;
+        --border: rgba(255, 255, 255, 0.09); --surface: rgba(255, 255, 255, 0.035);
+        --surface-2: rgba(255, 255, 255, 0.06); --accent: #8b93ff;
+        --grad: linear-gradient(100deg, #6366f1, #22d3ee 55%, #a855f7);
+        --ease: cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html { -webkit-text-size-adjust: 100%; }
+      body {
+        background: var(--bg); color: var(--text); min-height: 100svh;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        line-height: 1.55; -webkit-font-smoothing: antialiased; overflow-x: hidden;
+      }
+      a { color: inherit; text-decoration: none; }
+      .grad-text { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+      header {
+        position: sticky; top: 0; z-index: 50; height: 64px;
+        display: flex; align-items: center; justify-content: space-between; padding: 0 22px;
+        background: rgba(5, 6, 10, 0.72); backdrop-filter: blur(14px) saturate(140%);
+        border-bottom: 1px solid var(--border);
+      }
+      .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; }
+      .brand .dot { width: 20px; height: 20px; border-radius: 50%; background: var(--grad); box-shadow: 0 0 16px rgba(99, 102, 241, 0.6); }
+      .nav-r { display: flex; gap: 22px; align-items: center; font-size: 14px; }
+      .nav-r a { color: var(--muted); font-weight: 500; }
+      .nav-r a:hover { color: var(--text); }
+
+      .btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+        font-weight: 600; font-size: 14px; padding: 11px 18px; border-radius: 10px; cursor: pointer;
+        border: 1px solid transparent; transition: transform 0.2s var(--ease), background 0.2s, box-shadow 0.3s, opacity 0.2s;
+        white-space: nowrap; font-family: inherit;
+      }
+      .btn-primary { background: var(--grad); color: #fff; box-shadow: 0 8px 26px rgba(99, 102, 241, 0.35); }
+      .btn-primary:hover { transform: translateY(-1px); }
+      .btn-primary:disabled { opacity: 0.55; cursor: default; transform: none; box-shadow: none; }
+      .btn-ghost { background: var(--surface); color: var(--text); border-color: var(--border); }
+      .btn-ghost:hover { background: var(--surface-2); }
+
+      .layout {
+        display: grid; grid-template-columns: 380px 1fr; gap: 0; height: calc(100svh - 64px);
+      }
+      @media (max-width: 860px) {
+        .layout { grid-template-columns: 1fr; height: auto; }
+        .stage { height: 56svh !important; order: -1; }
+      }
+
+      /* Control panel */
+      .panel { padding: 26px 24px; overflow-y: auto; border-right: 1px solid var(--border); }
+      .panel h1 { font-size: 1.5rem; letter-spacing: -0.02em; line-height: 1.15; }
+      .panel .sub { color: var(--muted); font-size: 0.92rem; margin-top: 8px; }
+      .label { font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); margin: 26px 0 10px; }
+
+      .drop {
+        border: 1.5px dashed var(--border); border-radius: 14px; padding: 26px 18px; text-align: center;
+        cursor: pointer; transition: border-color 0.2s, background 0.2s; background: var(--surface);
+      }
+      .drop:hover, .drop.over { border-color: var(--accent); background: var(--surface-2); }
+      .drop .big { font-weight: 600; }
+      .drop .small { color: var(--muted); font-size: 0.85rem; margin-top: 6px; }
+      .drop img { max-width: 100%; max-height: 150px; border-radius: 10px; margin-bottom: 12px; }
+
+      .note {
+        margin-top: 16px; font-size: 0.82rem; color: var(--muted); background: rgba(139, 147, 255, 0.08);
+        border: 1px solid rgba(139, 147, 255, 0.22); border-radius: 10px; padding: 12px 14px; line-height: 1.5;
+      }
+      .note b { color: var(--text); }
+
+      .seg { display: flex; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 4px; }
+      .seg button {
+        flex: 1; padding: 8px 6px; border: 0; background: transparent; color: var(--muted); font-weight: 600;
+        font-size: 13px; border-radius: 7px; cursor: pointer; font-family: inherit; transition: background 0.2s, color 0.2s;
+      }
+      .seg button.active { background: var(--surface-2); color: var(--text); }
+
+      .row { display: flex; gap: 10px; margin-top: 12px; }
+      .row .btn { flex: 1; }
+      .toggle { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; font-size: 0.92rem; }
+      .switch { width: 44px; height: 26px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); position: relative; cursor: pointer; transition: background 0.2s; }
+      .switch.on { background: var(--accent); }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform 0.2s var(--ease); }
+      .switch.on::after { transform: translateX(18px); }
+
+      /* Stage / viewer */
+      .stage { position: relative; background:
+        repeating-conic-gradient(#0e1018 0% 25%, #0a0c12 0% 50%) 50% / 26px 26px; }
+      .stage canvas { display: block; width: 100% !important; height: 100% !important; }
+      .stage .badge {
+        position: absolute; left: 16px; bottom: 14px; font-size: 12px; color: var(--muted);
+        background: rgba(5, 6, 10, 0.6); border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px;
+        backdrop-filter: blur(8px); pointer-events: none;
+      }
+      .stage .badge .live { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-right: 7px; }
+      .genmask {
+        position: absolute; inset: 0; display: none; place-items: center; z-index: 3;
+        background: rgba(5, 6, 10, 0.55); backdrop-filter: blur(3px); font-weight: 600; letter-spacing: 0.02em;
+      }
+      .genmask.show { display: grid; }
+      .spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.18); border-top-color: var(--accent); animation: spin 0.9s linear infinite; margin: 0 auto 14px; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="./"><span class="dot"></span> animations</a>
+      <nav class="nav-r">
+        <a href="./">← Home</a>
+        <a href="https://github.com/zurlazar/animations" target="_blank" rel="noopener">GitHub ↗</a>
+      </nav>
+    </header>
+
+    <div class="layout">
+      <aside class="panel">
+        <h1>Image → <span class="grad-text">3D</span> Studio</h1>
+        <p class="sub">Drop a photo of a device and turn it into a spinnable, ad-ready 3D model.</p>
+
+        <div class="label">1 · Your device photo</div>
+        <div class="drop" id="drop">
+          <div id="drop-empty">
+            <div class="big">Tap to upload / drop an image</div>
+            <div class="small">JPG or PNG · a product shot works best</div>
+          </div>
+          <div id="drop-filled" hidden>
+            <img id="preview" alt="uploaded device" />
+            <div class="small" id="filename"></div>
+          </div>
+        </div>
+        <input id="file" type="file" accept="image/*" hidden />
+
+        <div class="label">2 · Generate</div>
+        <button class="btn btn-primary" id="generate" style="width:100%" disabled>Generate 3D model</button>
+        <div class="note" id="genNote">
+          <b>Early preview.</b> Real image-to-3D (your photo → mesh, via an AI model like
+          TRELLIS / Hunyuan3D / Meshy) is the next step to connect. For now, Generate loads a
+          <b>sample device</b> so you can feel the ad-ready studio: turntable, lighting, transparent
+          background, and export.
+        </div>
+
+        <div class="label">Background</div>
+        <div class="seg" id="bgSeg">
+          <button data-bg="studio" class="active">Studio</button>
+          <button data-bg="light">Light</button>
+          <button data-bg="transparent">Transparent</button>
+        </div>
+
+        <div class="toggle">
+          <span>Auto-rotate turntable</span>
+          <div class="switch on" id="spinToggle" role="switch" aria-checked="true"></div>
+        </div>
+
+        <div class="label">3 · Export for your ad</div>
+        <div class="row">
+          <button class="btn btn-ghost" id="exportPng">Download PNG</button>
+          <button class="btn btn-ghost" id="resetView">Reset view</button>
+        </div>
+      </aside>
+
+      <main class="stage" id="stage">
+        <div class="genmask" id="genmask"><div><div class="spinner"></div>Generating…</div></div>
+        <div class="badge"><span class="live"></span>Sample model · <span id="backend">…</span></div>
+      </main>
+    </div>
+
+    <script type="module" src="/src/studio.ts"></script>
+  </body>
+</html>

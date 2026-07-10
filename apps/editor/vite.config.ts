@@ -1,3 +1,4 @@
+import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
 
 export default defineConfig({
@@ -5,6 +6,13 @@ export default defineConfig({
   // (Netlify/Vercel) or a project subpath (GitHub Pages: /animations/).
   base: "./",
   server: { port: 5173, host: true },
-  // three/webgpu is large; let it split naturally.
-  build: { target: "esnext" },
+  build: {
+    target: "esnext",
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL("./index.html", import.meta.url)),
+        studio: fileURLToPath(new URL("./studio.html", import.meta.url)),
+      },
+    },
+  },
 });
