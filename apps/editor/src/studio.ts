@@ -227,13 +227,18 @@ async function displayModel(url: string): Promise<void> {
 type Provider =
   | { kind: "none" }
   | { kind: "hf"; token: string }
+  | { kind: "gradioUrl"; url: string } // a Gradio app (e.g. Colab share link)
   | { kind: "meshy"; key: string }
   | { kind: "meshyProxy"; base: string };
 
 function provider(): Provider {
   const v = (localStorage.getItem(CRED) || "").trim();
   if (!v) return { kind: "none" };
-  if (/^https?:\/\//i.test(v)) return { kind: "meshyProxy", base: v.replace(/\/$/, "") };
+  if (/^https?:\/\//i.test(v)) {
+    // A Gradio share URL (Colab / local tunnel) → drive it like a TripoSR app.
+    if (/gradio\.live|gradio\.app|trycloudflare\.com|ngrok/i.test(v)) return { kind: "gradioUrl", url: v.replace(/\/$/, "") };
+    return { kind: "meshyProxy", base: v.replace(/\/$/, "") };
+  }
   if (/^hf_/i.test(v)) return { kind: "hf", token: v };
   return { kind: "meshy", key: v };
 }
@@ -309,33 +314,44 @@ function findGlb(v: unknown): string | null {
   return null;
 }
 
-async function hfGenerate(token: string): Promise<void> {
-  setGenText("Connecting to Hugging Face…");
-  const { Client, handle_file } = await import("@gradio/client");
-  const client = await Client.connect(HF_SPACE, { token: token as `hf_${string}` });
+/** Drive a TripoSR-style Gradio app (HF Space with token, or a Colab/tunnel URL). */
+async function gradioGenerate(target: string, token: string | null): Promise<void> {
+  const work = (async () => {
+    setGenText(token ? "Connecting to Hugging Face…" : "Connecting to your GPU…");
+    const { Client, handle_file } = await import("@gradio/client");
+    const client = await Client.connect(target, token ? { token: token as `hf_${string}` } : {});
 
-  const blob = await (await fetch(uploadedDataUrl!)).blob();
-  setGenText("Removing background…");
-  const pre = await client.predict("/preprocess", [handle_file(blob), true, 0.85]);
-  const processed = (pre.data as unknown[])[0];
+    const blob = await (await fetch(uploadedDataUrl!)).blob();
+    setGenText("Removing background…");
+    const pre = await client.predict("/preprocess", [handle_file(blob), true, 0.85]);
+    const processed = (pre.data as unknown[])[0];
 
-  setGenText("Generating 3D… (free GPU may queue)");
-  const gen = await client.predict("/generate", [processed, 256]);
-  const glb = findGlb(gen.data);
-  if (!glb) throw new Error(`No GLB from the "${HF_SPACE}" Space — it may have changed or be busy. See docs/GENERATION.md.`);
+    setGenText("Generating 3D… (free GPU may queue)");
+    const gen = await client.predict("/generate", [processed, 256]);
+    const glb = findGlb(gen.data);
+    if (!glb) throw new Error(`No GLB returned from "${target}" — the app may have changed or be busy. See docs/GENERATION.md.`);
 
-  setGenText("Loading model…");
-  await displayModel(glb);
+    setGenText("Loading model…");
+    await displayModel(glb);
+  })();
+
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("Timed out after 4 min — the free Space is busy. Try again shortly, or from a desktop browser.")), 240_000),
+  );
+  await Promise.race([work, timeout]);
 }
 
 // --- UI ----------------------------------------------------------------------
 
 let uploadedDataUrl: string | null = null;
 
-const setGenText = (t: string) => ($("genText").textContent = t);
+const setGenText = (t: string) => {
+  $("genText").textContent = t;
+  $("genStatus").textContent = t; // mirror progress next to the button
+};
 const showMask = (on: boolean) => $("genmask").classList.toggle("show", on);
 
-function sampleDemo(): void {
+function sampleDemo(): Promise<void> {
   showMask(true);
   setGenText("Generating…");
   sampleDevice.visible = true;
@@ -345,22 +361,26 @@ function sampleDemo(): void {
   }
   $("badgeLabel").textContent = "Sample model";
   sampleDevice.scale.setScalar(0.6);
-  window.setTimeout(() => {
-    showMask(false);
-    const start = performance.now();
-    const pop = () => {
-      const k = Math.min(1, (performance.now() - start) / 500);
-      sampleDevice.scale.setScalar(0.6 + 0.4 * (1 - Math.pow(1 - k, 3)));
-      if (k < 1) requestAnimationFrame(pop);
-    };
-    pop();
-  }, 1200);
+  return new Promise((resolve) => {
+    window.setTimeout(() => {
+      showMask(false);
+      const start = performance.now();
+      const pop = () => {
+        const k = Math.min(1, (performance.now() - start) / 500);
+        sampleDevice.scale.setScalar(0.6 + 0.4 * (1 - Math.pow(1 - k, 3)));
+        if (k < 1) requestAnimationFrame(pop);
+        else resolve();
+      };
+      pop();
+    }, 1200);
+  });
 }
 
 async function realGenerate(p: Exclude<Provider, { kind: "none" }>): Promise<void> {
   showMask(true);
   try {
-    if (p.kind === "hf") await hfGenerate(p.token);
+    if (p.kind === "hf") await gradioGenerate(HF_SPACE, p.token);
+    else if (p.kind === "gradioUrl") await gradioGenerate(p.url, null);
     else if (p.kind === "meshy") await meshyGenerate(MESHY_DIRECT, p.key);
     else await meshyGenerate(p.base, null);
   } catch (err) {
@@ -388,6 +408,7 @@ function wireUI(): void {
     const map: Record<Provider["kind"], [string, string]> = {
       none: ["Not connected — Generate shows the sample device.", "keystatus"],
       hf: ["Hugging Face connected (free). Generate makes a real model — free GPUs can queue.", "keystatus ok"],
+      gradioUrl: ["Your GPU app connected (Colab/tunnel) — fast, reliable, real generation.", "keystatus ok"],
       meshy: ["Meshy key saved — real generation (uses Meshy credits).", "keystatus ok"],
       meshyProxy: ["Proxy connected — real generation.", "keystatus ok"],
     };
@@ -439,8 +460,17 @@ function wireUI(): void {
   generate.addEventListener("click", () => {
     if (!uploadedDataUrl) return;
     const p = provider();
-    if (p.kind === "none") sampleDemo();
-    else void realGenerate(p);
+    // Local feedback right where the user tapped, and scroll the viewer (which
+    // holds the progress overlay) into view — on mobile it sits above the fold.
+    generate.disabled = true;
+    generate.textContent = "Generating…";
+    setGenText("Starting…");
+    stage.scrollIntoView({ behavior: "smooth", block: "start" });
+    const done = () => {
+      generate.disabled = false;
+      generate.textContent = "Generate 3D model";
+    };
+    (p.kind === "none" ? sampleDemo() : realGenerate(p)).finally(done);
   });
 
   $("bgSeg").querySelectorAll<HTMLButtonElement>("button").forEach((b) => {

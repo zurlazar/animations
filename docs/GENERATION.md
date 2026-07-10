@@ -5,13 +5,35 @@ provider from whatever you paste into the **“Connect a generator”** field:
 
 | You paste… | Provider | Cost |
 |---|---|---|
-| `hf_…` (Hugging Face token) | **Hugging Face Space** (TripoSR) | **Free** |
+| a `…gradio.live` URL | **Your own GPU** (Colab notebook) | **Free**, reliable |
+| `hf_…` (Hugging Face token) | Hugging Face Space (TripoSR) | Free, can queue |
 | `msy_…` (Meshy key) | Meshy image-to-3D API | Paid (credits) |
-| an `https://…` URL | a Meshy proxy (see bottom) | — |
+| another `https://…` URL | a Meshy proxy (see bottom) | — |
 | nothing | procedural sample device | Free |
 
 Whatever you paste is stored **only in your browser** (`localStorage`) and sent
 straight to the provider — never committed to this repo or routed through us.
+
+---
+
+## Best free + reliable — your own GPU via Colab
+
+If you have Colab (Pro helps), run the model on **your** GPU — fast, no shared
+queue, effectively free (uses your Colab compute).
+
+1. Open **[`colab/animations_image_to_3d.ipynb`](../colab/animations_image_to_3d.ipynb)**
+   in Google Colab (upload it, or **File → Open notebook → GitHub**).
+2. **Runtime → Change runtime type → GPU**, then **Runtime → Run all**.
+3. Wait for the last cell to print a line like
+   `Running on public URL: https://XXXX.gradio.live`.
+4. Copy that URL into the Studio's **Connect a generator** field → **Save**.
+5. Upload a photo → **Generate**. It runs on your GPU.
+
+The Studio speaks the Gradio protocol, so it drives the notebook's TripoSR app
+directly (`/preprocess` → `/generate` → GLB). Keep the notebook running while
+you use the Studio. **The `gradio.live` URL changes every session** — paste the
+fresh one each time. For higher quality, swap TripoSR for TRELLIS/Hunyuan3D in
+the notebook (heavier install; multi-step API may need a tweak).
 
 ---
 

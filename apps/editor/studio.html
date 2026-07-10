@@ -151,6 +151,7 @@
 
         <div class="label">2 · Generate</div>
         <button class="btn btn-primary" id="generate" style="width:100%" disabled>Generate 3D model</button>
+        <div class="keystatus" id="genStatus" style="margin-top:10px;"></div>
         <div class="note" id="genNote">
           Connect a generator below to turn your photo into a real 3D model. A free
           <b>Hugging Face</b> token works. Without one, Generate shows a <b>sample device</b> so you
@@ -158,16 +159,17 @@
         </div>
 
         <div class="label">Connect a generator</div>
-        <input id="meshyKey" class="keyin" type="password" placeholder="Hugging Face token (hf_…, free) — or Meshy key / proxy URL" autocomplete="off" spellcheck="false" />
+        <input id="meshyKey" class="keyin" type="password" placeholder="Colab share URL (…gradio.live) · HF token (hf_…) · Meshy key" autocomplete="off" spellcheck="false" />
         <div class="row">
           <button class="btn btn-ghost" id="saveKey">Save</button>
-          <a class="btn btn-ghost" href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">Free HF token ↗</a>
+          <a class="btn btn-ghost" href="https://github.com/zurlazar/animations/blob/main/colab/animations_image_to_3d.ipynb" target="_blank" rel="noopener">Colab GPU ↗</a>
         </div>
         <div class="keystatus" id="keyStatus">Not connected — Generate shows the sample device.</div>
         <div class="note">
-          <b>Free option:</b> paste a Hugging Face token — generation runs on a free public Space
-          (TripoSR), so it can <b>queue or be slow</b>, and quality varies. Your credential is stored
-          <b>only in this browser</b>. Full setup (free HF, paid Meshy, proxy) —
+          <b>Best free + reliable:</b> run the <b>Colab GPU</b> notebook, then paste its
+          <code>…gradio.live</code> link here — generation runs on your own GPU (fast, no queue).
+          Or paste a free <b>Hugging Face</b> token (public Space — can queue), or a paid Meshy key.
+          Stored <b>only in this browser</b>. Setup —
           <a href="https://github.com/zurlazar/animations/blob/main/docs/GENERATION.md" target="_blank" rel="noopener" style="color:var(--accent)">docs/GENERATION.md</a>.
         </div>
 
