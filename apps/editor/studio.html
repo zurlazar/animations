@@ -152,22 +152,23 @@
         <div class="label">2 · Generate</div>
         <button class="btn btn-primary" id="generate" style="width:100%" disabled>Generate 3D model</button>
         <div class="note" id="genNote">
-          Connect your <b>Meshy</b> key below to turn your photo into a real 3D model. Without a
-          key, Generate shows a <b>sample device</b> so you can still explore the studio.
+          Connect a generator below to turn your photo into a real 3D model. A free
+          <b>Hugging Face</b> token works. Without one, Generate shows a <b>sample device</b> so you
+          can still explore the studio.
         </div>
 
-        <div class="label">Meshy AI · real image → 3D</div>
-        <input id="meshyKey" class="keyin" type="password" placeholder="Paste Meshy API key (msy_…) or proxy URL" autocomplete="off" spellcheck="false" />
+        <div class="label">Connect a generator</div>
+        <input id="meshyKey" class="keyin" type="password" placeholder="Hugging Face token (hf_…, free) — or Meshy key / proxy URL" autocomplete="off" spellcheck="false" />
         <div class="row">
-          <button class="btn btn-ghost" id="saveKey">Save key</button>
-          <a class="btn btn-ghost" href="https://www.meshy.ai/settings/api" target="_blank" rel="noopener">Get a key ↗</a>
+          <button class="btn btn-ghost" id="saveKey">Save</button>
+          <a class="btn btn-ghost" href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">Free HF token ↗</a>
         </div>
         <div class="keystatus" id="keyStatus">Not connected — Generate shows the sample device.</div>
         <div class="note">
-          Your key is stored <b>only in this browser</b> (localStorage) and sent straight to Meshy.
-          If your browser blocks the call (CORS), deploy the free proxy — see
-          <a href="https://github.com/zurlazar/animations/blob/main/docs/MESHY.md" target="_blank" rel="noopener" style="color:var(--accent)">docs/MESHY.md</a>.
-          Generation can take a minute and uses Meshy credits.
+          <b>Free option:</b> paste a Hugging Face token — generation runs on a free public Space
+          (TripoSR), so it can <b>queue or be slow</b>, and quality varies. Your credential is stored
+          <b>only in this browser</b>. Full setup (free HF, paid Meshy, proxy) —
+          <a href="https://github.com/zurlazar/animations/blob/main/docs/GENERATION.md" target="_blank" rel="noopener" style="color:var(--accent)">docs/GENERATION.md</a>.
         </div>
 
         <div class="label">Background</div>

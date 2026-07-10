@@ -23,6 +23,9 @@ importers:
       '@animations/timeline':
         specifier: workspace:*
         version: link:../../packages/timeline
+      '@gradio/client':
+        specifier: ^2.3.1
+        version: 2.3.1
       three:
         specifier: ^0.171.0
         version: 0.171.0
@@ -184,6 +187,10 @@ packages:
     engines: {node: '>=12'}
     cpu: [x64]
     os: [win32]
+
+  '@gradio/client@2.3.1':
+    resolution: {integrity: sha512-Vznt4Ju/nPCajVMlwbJgfrHp0NGodSNCYxoxQEb9WfwPVF2fSNyobGmIiQ2/xbm7Mkn3afNGRqfmIyjJesjOxw==}
+    engines: {node: '>=18.0.0'}
 
   '@jridgewell/sourcemap-codec@1.5.5':
     resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
@@ -403,6 +410,9 @@ packages:
   expect-type@1.4.0:
     resolution: {integrity: sha512-KfYbmpRm0VbLjEvVa9yGwCi9GI34xvi7A/HXYWQO65CSD2u3MczUJSuwXKFIxlGsgBQizV9q5J9NHj4VG0n+pA==}
     engines: {node: '>=12.0.0'}
+
+  fetch-event-stream@0.1.6:
+    resolution: {integrity: sha512-GREtJ5HNikdU2AXtZ6E/5bk+aslMU6ie5mPG6H9nvsdDkkHQ6m5lHwmmmDTOBexok9hApQ7EprsXCdmz9ZC68w==}
 
   fflate@0.8.3:
     resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
@@ -624,6 +634,10 @@ snapshots:
   '@esbuild/win32-x64@0.21.5':
     optional: true
 
+  '@gradio/client@2.3.1':
+    dependencies:
+      fetch-event-stream: 0.1.6
+
   '@jridgewell/sourcemap-codec@1.5.5': {}
 
   '@rollup/rollup-android-arm-eabi@4.62.2':
@@ -813,6 +827,8 @@ snapshots:
       '@types/estree': 1.0.9
 
   expect-type@1.4.0: {}
+
+  fetch-event-stream@0.1.6: {}
 
   fflate@0.8.3: {}
 

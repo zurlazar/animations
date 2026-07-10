@@ -1,15 +1,17 @@
 /**
  * Image → 3D Studio.
  *
- * Upload a photo of a device, then either:
- *   • with a Meshy API key connected → send the image to Meshy's image-to-3D
- *     API, poll the task, and load the returned GLB into the studio, or
- *   • with no key → reveal a procedurally-built sample device so the studio
- *     (turntable, lighting, backgrounds, export) is fully usable offline.
+ * Upload a photo of a device, then generate a 3D model with the connected
+ * provider (auto-detected from the single credential field):
+ *   • Hugging Face token (hf_…)  → FREE, via a public image-to-3D Space
+ *     (TripoSR by default), driven with @gradio/client. Free GPUs can queue.
+ *   • Meshy key (msy_…)          → paid, Meshy image-to-3D API.
+ *   • https URL                  → a Meshy proxy (see docs/GENERATION.md).
+ *   • nothing                    → a procedural sample device, so the studio
+ *     (turntable, lighting, backgrounds, export) is always usable.
  *
- * The key is stored only in the browser (localStorage) and sent straight to
- * Meshy. If the browser blocks the request (CORS), a proxy URL can be set
- * (localStorage "meshy_proxy") — see docs/MESHY.md.
+ * Credentials are stored only in this browser (localStorage) and sent straight
+ * to the provider — never committed or proxied through us.
  */
 import { detectBackend } from "@animations/core";
 import * as THREE from "three";
@@ -22,9 +24,9 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 
 type BgMode = "studio" | "light" | "transparent";
 
+const CRED = "gen_cred"; // the single stored credential (hf_… / msy_… / https URL)
 const MESHY_DIRECT = "https://api.meshy.ai/openapi/v1";
-const KEY_STORE = "meshy_key";
-const PROXY_STORE = "meshy_proxy";
+const HF_SPACE = localStorage.getItem("hf_space") || "stabilityai/TripoSR";
 
 // --- textures & sample model -------------------------------------------------
 
@@ -118,13 +120,13 @@ const HOME = new THREE.Vector3(2.4, 1.5, 3.4);
 camera.position.copy(HOME);
 
 scene.add(new THREE.HemisphereLight(0xbcd0ff, 0x0b0d14, 0.9));
-const key = new THREE.DirectionalLight(0xffffff, 3.0);
-key.position.set(5, 8, 6);
+const keyLight = new THREE.DirectionalLight(0xffffff, 3.0);
+keyLight.position.set(5, 8, 6);
 const fill = new THREE.DirectionalLight(0x8ab4ff, 1.1);
 fill.position.set(-6, 2, 4);
 const rim = new THREE.DirectionalLight(0xc86bff, 1.6);
 rim.position.set(-4, 3, -6);
-scene.add(key, fill, rim);
+scene.add(keyLight, fill, rim);
 
 const shadow = new THREE.Mesh(
   new THREE.PlaneGeometry(4, 4),
@@ -189,13 +191,11 @@ function resize(): void {
   camera.updateProjectionMatrix();
 }
 
-/** Center a loaded model at the origin, scale it to frame, and sit it on the floor. */
 function frameObject(obj: THREE.Object3D): void {
   let box = new THREE.Box3().setFromObject(obj);
   const size = box.getSize(new THREE.Vector3());
   const maxDim = Math.max(size.x, size.y, size.z) || 1;
   obj.scale.setScalar(2.2 / maxDim);
-
   box = new THREE.Box3().setFromObject(obj);
   const center = box.getCenter(new THREE.Vector3());
   obj.position.x -= center.x;
@@ -203,78 +203,10 @@ function frameObject(obj: THREE.Object3D): void {
   obj.position.y -= box.min.y + 0.9; // rest the base on the shadow plane
 }
 
-// --- Meshy API ---------------------------------------------------------------
-
-interface MeshyConfig {
-  base: string;
-  apiKey: string | null;
-  viaProxy: boolean;
-}
-function meshyConfig(): MeshyConfig {
-  const proxy = localStorage.getItem(PROXY_STORE);
-  if (proxy) return { base: proxy.replace(/\/$/, ""), apiKey: null, viaProxy: true };
-  return { base: MESHY_DIRECT, apiKey: localStorage.getItem(KEY_STORE), viaProxy: false };
-}
-
-function meshyHeaders(cfg: MeshyConfig): HeadersInit {
-  const h: Record<string, string> = { "Content-Type": "application/json" };
-  if (!cfg.viaProxy && cfg.apiKey) h["Authorization"] = `Bearer ${cfg.apiKey}`;
-  return h;
-}
-
-async function meshyError(res: Response): Promise<never> {
-  let detail = `${res.status}`;
-  try {
-    const j = await res.json();
-    detail = (j.message as string) || (j.error as string) || JSON.stringify(j);
-  } catch {
-    /* non-JSON body */
-  }
-  if (res.status === 401 || res.status === 403) throw new Error("Meshy rejected the API key (401/403). Check the key you pasted.");
-  if (res.status === 402) throw new Error("Out of Meshy credits (402). Top up on meshy.ai.");
-  if (res.status === 429) throw new Error("Meshy rate limit hit (429). Wait a moment and retry.");
-  throw new Error(`Meshy error ${detail}`);
-}
-
-async function createTask(dataUrl: string, cfg: MeshyConfig): Promise<string> {
-  const res = await fetch(`${cfg.base}/image-to-3d`, {
-    method: "POST",
-    headers: meshyHeaders(cfg),
-    body: JSON.stringify({ image_url: dataUrl, should_texture: true, target_formats: ["glb"] }),
-  });
-  if (!res.ok) await meshyError(res);
-  const j = (await res.json()) as { result: string };
-  return j.result;
-}
-
-interface MeshyTask {
-  status: string;
-  progress?: number;
-  model_urls?: { glb?: string };
-  task_error?: { message?: string };
-}
-async function pollTask(id: string, cfg: MeshyConfig, onProgress: (p: number) => void): Promise<MeshyTask> {
-  for (let i = 0; i < 90; i++) {
-    const res = await fetch(`${cfg.base}/image-to-3d/${id}`, { headers: meshyHeaders(cfg) });
-    if (!res.ok) await meshyError(res);
-    const task = (await res.json()) as MeshyTask;
-    if (task.status === "SUCCEEDED") return task;
-    if (["FAILED", "CANCELED", "EXPIRED"].includes(task.status)) {
-      throw new Error(task.task_error?.message || `Meshy task ${task.status}`);
-    }
-    onProgress(task.progress ?? 0);
-    await new Promise((r) => setTimeout(r, 4000));
-  }
-  throw new Error("Timed out waiting for Meshy (over 6 minutes).");
-}
-
 const loader = new GLTFLoader();
 async function displayModel(url: string): Promise<void> {
   const gltf = await loader.loadAsync(url);
-  if (generated) {
-    scene.remove(generated);
-    generated = null;
-  }
+  if (generated) scene.remove(generated);
   frameObject(gltf.scene);
   sampleDevice.visible = false;
   scene.add(gltf.scene);
@@ -282,16 +214,118 @@ async function displayModel(url: string): Promise<void> {
   $("badgeLabel").textContent = "Your model";
 }
 
+// --- provider detection ------------------------------------------------------
+
+type Provider =
+  | { kind: "none" }
+  | { kind: "hf"; token: string }
+  | { kind: "meshy"; key: string }
+  | { kind: "meshyProxy"; base: string };
+
+function provider(): Provider {
+  const v = (localStorage.getItem(CRED) || "").trim();
+  if (!v) return { kind: "none" };
+  if (/^https?:\/\//i.test(v)) return { kind: "meshyProxy", base: v.replace(/\/$/, "") };
+  if (/^hf_/i.test(v)) return { kind: "hf", token: v };
+  return { kind: "meshy", key: v };
+}
+
+// --- Meshy -------------------------------------------------------------------
+
+async function meshyThrow(res: Response): Promise<never> {
+  let detail = `${res.status}`;
+  try {
+    const j = await res.json();
+    detail = (j.message as string) || (j.error as string) || JSON.stringify(j);
+  } catch {
+    /* non-JSON */
+  }
+  if (res.status === 401 || res.status === 403) throw new Error("Meshy rejected the key (401/403).");
+  if (res.status === 402) throw new Error("Out of Meshy credits (402).");
+  if (res.status === 429) throw new Error("Meshy rate limit hit (429). Retry shortly.");
+  throw new Error(`Meshy error ${detail}`);
+}
+
+async function meshyGenerate(base: string, apiKey: string | null): Promise<void> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+
+  setGenText("Uploading image…");
+  const create = await fetch(`${base}/image-to-3d`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ image_url: uploadedDataUrl, should_texture: true, target_formats: ["glb"] }),
+  });
+  if (!create.ok) await meshyThrow(create);
+  const id = ((await create.json()) as { result: string }).result;
+
+  for (let i = 0; i < 90; i++) {
+    const res = await fetch(`${base}/image-to-3d/${id}`, { headers });
+    if (!res.ok) await meshyThrow(res);
+    const task = (await res.json()) as { status: string; progress?: number; model_urls?: { glb?: string } };
+    if (task.status === "SUCCEEDED") {
+      const glb = task.model_urls?.glb;
+      if (!glb) throw new Error("Meshy returned no GLB URL.");
+      setGenText("Loading model…");
+      await displayModel(glb);
+      return;
+    }
+    if (["FAILED", "CANCELED", "EXPIRED"].includes(task.status)) throw new Error(`Meshy task ${task.status}`);
+    setGenText(`Generating… ${Math.round(task.progress ?? 0)}%`);
+    await new Promise((r) => setTimeout(r, 4000));
+  }
+  throw new Error("Timed out waiting for Meshy.");
+}
+
+// --- Hugging Face (free, via @gradio/client) ---------------------------------
+
+/** Recursively find a .glb URL in a Gradio result payload. */
+function findGlb(v: unknown): string | null {
+  if (typeof v === "string") return v.toLowerCase().endsWith(".glb") ? v : null;
+  if (Array.isArray(v)) {
+    for (const x of v) {
+      const r = findGlb(x);
+      if (r) return r;
+    }
+    return null;
+  }
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    const url = (o.url as string) || (o.path as string);
+    if (typeof url === "string" && url.toLowerCase().endsWith(".glb")) return (o.url as string) || url;
+    for (const k of Object.keys(o)) {
+      const r = findGlb(o[k]);
+      if (r) return r;
+    }
+  }
+  return null;
+}
+
+async function hfGenerate(token: string): Promise<void> {
+  setGenText("Connecting to Hugging Face…");
+  const { Client, handle_file } = await import("@gradio/client");
+  const client = await Client.connect(HF_SPACE, { token: token as `hf_${string}` });
+
+  const blob = await (await fetch(uploadedDataUrl!)).blob();
+  setGenText("Removing background…");
+  const pre = await client.predict("/preprocess", [handle_file(blob), true, 0.85]);
+  const processed = (pre.data as unknown[])[0];
+
+  setGenText("Generating 3D… (free GPU may queue)");
+  const gen = await client.predict("/generate", [processed, 256]);
+  const glb = findGlb(gen.data);
+  if (!glb) throw new Error(`No GLB from the "${HF_SPACE}" Space — it may have changed or be busy. See docs/GENERATION.md.`);
+
+  setGenText("Loading model…");
+  await displayModel(glb);
+}
+
 // --- UI ----------------------------------------------------------------------
 
 let uploadedDataUrl: string | null = null;
 
-function setGenText(t: string): void {
-  $("genText").textContent = t;
-}
-function showMask(on: boolean): void {
-  $("genmask").classList.toggle("show", on);
-}
+const setGenText = (t: string) => ($("genText").textContent = t);
+const showMask = (on: boolean) => $("genmask").classList.toggle("show", on);
 
 function sampleDemo(): void {
   showMask(true);
@@ -315,24 +349,19 @@ function sampleDemo(): void {
   }, 1200);
 }
 
-async function realGenerate(): Promise<void> {
-  const cfg = meshyConfig();
+async function realGenerate(p: Exclude<Provider, { kind: "none" }>): Promise<void> {
   showMask(true);
-  setGenText("Uploading image…");
   try {
-    const id = await createTask(uploadedDataUrl!, cfg);
-    setGenText("Generating… 0%");
-    const task = await pollTask(id, cfg, (p) => setGenText(`Generating… ${Math.round(p)}%`));
-    const glb = task.model_urls?.glb;
-    if (!glb) throw new Error("Meshy finished but returned no GLB URL.");
-    setGenText("Loading model…");
-    await displayModel(glb);
+    if (p.kind === "hf") await hfGenerate(p.token);
+    else if (p.kind === "meshy") await meshyGenerate(MESHY_DIRECT, p.key);
+    else await meshyGenerate(p.base, null);
   } catch (err) {
-    const msg = err instanceof TypeError
-      ? "Your browser blocked the request to Meshy (likely CORS). Deploy the proxy from docs/MESHY.md and set it, or try from a desktop browser."
-      : err instanceof Error
-        ? err.message
-        : String(err);
+    const msg =
+      err instanceof TypeError
+        ? "Your browser blocked the request (CORS), or the free Space is unreachable. Try again, or see docs/GENERATION.md."
+        : err instanceof Error
+          ? err.message
+          : String(err);
     alert(msg);
   } finally {
     showMask(false);
@@ -347,27 +376,24 @@ function wireUI(): void {
   const keyStatus = $("keyStatus");
 
   const refreshKeyStatus = () => {
-    const cfg = meshyConfig();
-    if (cfg.viaProxy) {
-      keyStatus.textContent = "Connected via proxy — Generate makes a real 3D model.";
-      keyStatus.className = "keystatus ok";
-    } else if (cfg.apiKey) {
-      keyStatus.textContent = "Key saved — Generate makes a real 3D model from your photo.";
-      keyStatus.className = "keystatus ok";
-    } else {
-      keyStatus.textContent = "Not connected — Generate shows the sample device.";
-      keyStatus.className = "keystatus";
-    }
+    const p = provider();
+    const map: Record<Provider["kind"], [string, string]> = {
+      none: ["Not connected — Generate shows the sample device.", "keystatus"],
+      hf: ["Hugging Face connected (free). Generate makes a real model — free GPUs can queue.", "keystatus ok"],
+      meshy: ["Meshy key saved — real generation (uses Meshy credits).", "keystatus ok"],
+      meshyProxy: ["Proxy connected — real generation.", "keystatus ok"],
+    };
+    const [text, cls] = map[p.kind];
+    keyStatus.textContent = text;
+    keyStatus.className = cls;
   };
-  keyInput.value = localStorage.getItem(PROXY_STORE) || localStorage.getItem(KEY_STORE) || "";
+  keyInput.value = localStorage.getItem(CRED) || "";
   refreshKeyStatus();
 
   $("saveKey").addEventListener("click", () => {
     const v = keyInput.value.trim();
-    localStorage.removeItem(KEY_STORE);
-    localStorage.removeItem(PROXY_STORE);
-    if (/^https?:\/\//i.test(v)) localStorage.setItem(PROXY_STORE, v); // a proxy URL
-    else if (v) localStorage.setItem(KEY_STORE, v); // a raw API key
+    if (v) localStorage.setItem(CRED, v);
+    else localStorage.removeItem(CRED);
     refreshKeyStatus();
   });
 
@@ -404,9 +430,9 @@ function wireUI(): void {
 
   generate.addEventListener("click", () => {
     if (!uploadedDataUrl) return;
-    const cfg = meshyConfig();
-    if (cfg.viaProxy || cfg.apiKey) void realGenerate();
-    else sampleDemo();
+    const p = provider();
+    if (p.kind === "none") sampleDemo();
+    else void realGenerate(p);
   });
 
   $("bgSeg").querySelectorAll<HTMLButtonElement>("button").forEach((b) => {
