@@ -1,0 +1,12 @@
+{
+  "name": "@animations/timeline",
+  "version": "0.0.0",
+  "description": "Keyframe tracks, sequencing, and physically-based springs/easing that can drive any property.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc -b"
+  }
+}

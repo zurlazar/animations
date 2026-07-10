@@ -1,0 +1,12 @@
+{
+  "name": "@animations/physics",
+  "version": "0.0.0",
+  "description": "Dynamics: Rapier/Jolt (WASM) rigid bodies + GPU-compute particles, fluids, and cloth.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc -b"
+  }
+}

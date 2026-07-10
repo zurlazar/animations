@@ -1,0 +1,9 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/timeline" },
+    { "path": "packages/nodes" },
+    { "path": "packages/physics" }
+  ]
+}

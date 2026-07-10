@@ -1,0 +1,22 @@
+{
+  "name": "animations",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A free, open-source platform for creating mesmerizing animations. WebGPU-first, web-native, open standards.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @animations/editor dev",
+    "build": "pnpm -r build",
+    "test": "vitest run",
+    "typecheck": "tsc -b --pretty && tsc --noEmit -p apps/editor/tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

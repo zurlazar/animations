@@ -1,0 +1,12 @@
+{
+  "name": "@animations/nodes",
+  "version": "0.0.0",
+  "description": "Procedural node-graph runtime and standard node library — the platform's plugin surface.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc -b"
+  }
+}
