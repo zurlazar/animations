@@ -318,10 +318,12 @@ function findGlb(v: unknown): string | null {
 
 /**
  * Drive a Gradio 3D-generation app (HF Space with token, or a Colab/tunnel URL).
- * Two dialects, chosen by what the connected app exposes:
- *   • /generate_mv — our multi-view notebook (Hunyuan3D-2mv): one call with
- *     front/back/left/right images (nulls for missing views).
- *   • /preprocess + /generate — a TripoSR app: single image (front view only).
+ * Three dialects, chosen by the endpoints the connected app exposes:
+ *   • /generate_mv          — multi-view notebook (Hunyuan3D-2mv): front/back/
+ *     left/right in one call (nulls for missing views).
+ *   • /preprocess + /generate — a TripoSR app: remove background, then generate.
+ *   • /generate (image only)  — a single-image app (e.g. TRELLIS) that does its
+ *     own preprocessing; send the front photo straight in.
  */
 async function gradioGenerate(target: string, token: string | null): Promise<void> {
   const work = (async () => {
@@ -329,10 +331,13 @@ async function gradioGenerate(target: string, token: string | null): Promise<voi
     const { Client, handle_file } = await import("@gradio/client");
     const client = await Client.connect(target, token ? { token: token as `hf_${string}` } : {});
 
-    let hasMv = false;
+    let mode: "mv" | "tripo" | "single" = "tripo";
     try {
       const api = (await client.view_api()) as { named_endpoints?: Record<string, unknown> };
-      hasMv = !!api.named_endpoints?.["/generate_mv"];
+      const eps = api.named_endpoints ?? {};
+      if (eps["/generate_mv"]) mode = "mv";
+      else if (eps["/preprocess"]) mode = "tripo";
+      else if (eps["/generate"]) mode = "single";
     } catch {
       /* older apps can fail view_api — assume the TripoSR dialect */
     }
@@ -340,11 +345,17 @@ async function gradioGenerate(target: string, token: string | null): Promise<voi
     const toFile = async (dataUrl: string) => handle_file(await (await fetch(dataUrl)).blob());
 
     let glb: string | null;
-    if (hasMv) {
+    if (mode === "mv") {
       const n = viewCount();
       setGenText(`Generating from ${n} view${n > 1 ? "s" : ""}… (heavier model, ~1–3 min)`);
       const args = await Promise.all(VIEWS.map((v) => (views[v] ? toFile(views[v]!) : Promise.resolve(null))));
       const gen = await client.predict("/generate_mv", args);
+      glb = findGlb(gen.data);
+    } else if (mode === "single") {
+      if (viewCount() > 1) setGenText("This generator is single-view — using the Front photo…");
+      const front = await toFile(views.front!);
+      setGenText("Generating 3D… (this model is slower but sharper)");
+      const gen = await client.predict("/generate", [front]);
       glb = findGlb(gen.data);
     } else {
       if (viewCount() > 1) setGenText("This generator is single-view — using the Front photo…");

@@ -34,6 +34,18 @@ directly (`/preprocess` → `/generate` → GLB). Keep the notebook running whil
 you use the Studio. **The `gradio.live` URL changes every session** — paste the
 fresh one each time.
 
+### Best single-photo quality — `animations_trellis_to_3d.ipynb`
+
+For the sharpest result from **one** photo, run
+**[`colab/animations_trellis_to_3d.ipynb`](../colab/animations_trellis_to_3d.ipynb)**
+— it runs **TRELLIS**, which produces detailed, **textured** models far beyond
+TripoSR, with the same single-photo flow. The Studio auto-detects it (a
+single-image `generate` endpoint) and sends your Front photo straight in.
+
+*Heaviest notebook:* it builds custom CUDA extensions and pins torch, so the
+first run is **~15–20 min** and the most likely to need a dependency tweak — if
+a cell errors, grab the red text. Textured output (real colors).
+
 ### Multi-view (much truer shape) — `animations_multiview_to_3d.ipynb`
 
 Single-view TripoSR has to *guess* the sides it can't see, so complex devices
