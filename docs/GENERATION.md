@@ -32,8 +32,30 @@ queue, effectively free (uses your Colab compute).
 The Studio speaks the Gradio protocol, so it drives the notebook's TripoSR app
 directly (`/preprocess` → `/generate` → GLB). Keep the notebook running while
 you use the Studio. **The `gradio.live` URL changes every session** — paste the
-fresh one each time. For higher quality, swap TripoSR for TRELLIS/Hunyuan3D in
-the notebook (heavier install; multi-step API may need a tweak).
+fresh one each time.
+
+### Multi-view (much truer shape) — `animations_multiview_to_3d.ipynb`
+
+Single-view TripoSR has to *guess* the sides it can't see, so complex devices
+come out distorted. For a far more accurate result, run
+**[`colab/animations_multiview_to_3d.ipynb`](../colab/animations_multiview_to_3d.ipynb)**
+instead — it runs **Hunyuan3D-2mv**, which reconstructs from several angles.
+Same flow (Run all → paste the `gradio.live` URL), then fill the **Front / Back
+/ Left / Right** slots in the Studio. The Studio auto-detects this app (its
+`generate_mv` endpoint) and sends every view you provide in one call.
+
+*Experimental:* first run downloads several GB (~10 min), and v1 produces
+**untextured** geometry (accurate shape, solid color). Use the single-view
+notebook when you want a quick textured model.
+
+### Photo quality — this matters most
+
+Whatever the generator, the input photos dominate the result:
+- **Isolate the device.** Plain background, nothing else in frame — no cables,
+  clamps, or a second instrument attached. A busy workbench shot → a blobby model.
+- **Hold the phone upright** (a sideways photo becomes a sideways model).
+- **Even, soft lighting**; avoid deep shadows on a dark device.
+- For multi-view, shoot each angle at the **same distance and height**.
 
 ---
 
