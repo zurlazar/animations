@@ -384,16 +384,34 @@ async function realGenerate(p: Exclude<Provider, { kind: "none" }>): Promise<voi
     else if (p.kind === "meshy") await meshyGenerate(MESHY_DIRECT, p.key);
     else await meshyGenerate(p.base, null);
   } catch (err) {
-    const msg =
-      err instanceof TypeError
-        ? "Your browser blocked the request (CORS), or the free Space is unreachable. Try again, or see docs/GENERATION.md."
-        : err instanceof Error
-          ? err.message
-          : String(err);
-    alert(msg);
+    alert(describeError(err));
   } finally {
     showMask(false);
   }
+}
+
+/**
+ * Errors here come in three shapes: fetch TypeErrors (network/CORS), real
+ * Error instances, and @gradio/client rejections which are plain status
+ * objects — stringify those instead of showing "[object Object]".
+ */
+function describeError(err: unknown): string {
+  if (err instanceof TypeError) {
+    return "Your browser blocked the request (CORS), or the generator is unreachable. Try again, or see docs/GENERATION.md.";
+  }
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === "object") {
+    const o = err as Record<string, unknown>;
+    for (const k of ["message", "error", "detail", "title"]) {
+      if (typeof o[k] === "string" && o[k]) return o[k] as string;
+    }
+    try {
+      return JSON.stringify(err);
+    } catch {
+      /* fall through */
+    }
+  }
+  return String(err);
 }
 
 function wireUI(): void {
