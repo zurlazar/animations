@@ -220,6 +220,8 @@ async function displayModel(url: string): Promise<void> {
   scene.add(gltf.scene);
   generated = gltf.scene;
   $("badgeLabel").textContent = "Your model";
+  lastGlbUrl = url;
+  ($("downloadGlb") as HTMLButtonElement).disabled = false;
 }
 
 // --- provider detection ------------------------------------------------------
@@ -267,7 +269,7 @@ async function meshyGenerate(base: string, apiKey: string | null): Promise<void>
   const create = await fetch(`${base}/image-to-3d`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ image_url: uploadedDataUrl, should_texture: true, target_formats: ["glb"] }),
+    body: JSON.stringify({ image_url: views.front, should_texture: true, target_formats: ["glb"] }),
   });
   if (!create.ok) await meshyThrow(create);
   const id = ((await create.json()) as { result: string }).result;
@@ -314,21 +316,46 @@ function findGlb(v: unknown): string | null {
   return null;
 }
 
-/** Drive a TripoSR-style Gradio app (HF Space with token, or a Colab/tunnel URL). */
+/**
+ * Drive a Gradio 3D-generation app (HF Space with token, or a Colab/tunnel URL).
+ * Two dialects, chosen by what the connected app exposes:
+ *   • /generate_mv — our multi-view notebook (Hunyuan3D-2mv): one call with
+ *     front/back/left/right images (nulls for missing views).
+ *   • /preprocess + /generate — a TripoSR app: single image (front view only).
+ */
 async function gradioGenerate(target: string, token: string | null): Promise<void> {
   const work = (async () => {
     setGenText(token ? "Connecting to Hugging Face…" : "Connecting to your GPU…");
     const { Client, handle_file } = await import("@gradio/client");
     const client = await Client.connect(target, token ? { token: token as `hf_${string}` } : {});
 
-    const blob = await (await fetch(uploadedDataUrl!)).blob();
-    setGenText("Removing background…");
-    const pre = await client.predict("/preprocess", [handle_file(blob), true, 0.85]);
-    const processed = (pre.data as unknown[])[0];
+    let hasMv = false;
+    try {
+      const api = (await client.view_api()) as { named_endpoints?: Record<string, unknown> };
+      hasMv = !!api.named_endpoints?.["/generate_mv"];
+    } catch {
+      /* older apps can fail view_api — assume the TripoSR dialect */
+    }
 
-    setGenText("Generating 3D… (free GPU may queue)");
-    const gen = await client.predict("/generate", [processed, 256]);
-    const glb = findGlb(gen.data);
+    const toFile = async (dataUrl: string) => handle_file(await (await fetch(dataUrl)).blob());
+
+    let glb: string | null;
+    if (hasMv) {
+      const n = viewCount();
+      setGenText(`Generating from ${n} view${n > 1 ? "s" : ""}… (heavier model, ~1–3 min)`);
+      const args = await Promise.all(VIEWS.map((v) => (views[v] ? toFile(views[v]!) : Promise.resolve(null))));
+      const gen = await client.predict("/generate_mv", args);
+      glb = findGlb(gen.data);
+    } else {
+      if (viewCount() > 1) setGenText("This generator is single-view — using the Front photo…");
+      const front = await toFile(views.front!);
+      setGenText("Removing background…");
+      const pre = await client.predict("/preprocess", [front, true, 0.85]);
+      const processed = (pre.data as unknown[])[0];
+      setGenText("Generating 3D… (free GPU may queue)");
+      const gen = await client.predict("/generate", [processed, 320]);
+      glb = findGlb(gen.data);
+    }
     if (!glb) throw new Error(`No GLB returned from "${target}" — the app may have changed or be busy. See docs/GENERATION.md.`);
 
     setGenText("Loading model…");
@@ -336,14 +363,21 @@ async function gradioGenerate(target: string, token: string | null): Promise<voi
   })();
 
   const timeout = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error("Timed out after 4 min — the free Space is busy. Try again shortly, or from a desktop browser.")), 240_000),
+    setTimeout(() => reject(new Error("Timed out after 6 min — the generator is busy or stuck. Check the Colab output, then try again.")), 360_000),
   );
   await Promise.race([work, timeout]);
 }
 
 // --- UI ----------------------------------------------------------------------
 
-let uploadedDataUrl: string | null = null;
+/** Up to four views of the device, as data URLs. Front is required. */
+const VIEWS = ["front", "back", "left", "right"] as const;
+type ViewName = (typeof VIEWS)[number];
+const views: Record<ViewName, string | null> = { front: null, back: null, left: null, right: null };
+const viewCount = () => VIEWS.filter((v) => views[v]).length;
+
+/** URL of the last generated GLB, for Download .glb. */
+let lastGlbUrl: string | null = null;
 
 const setGenText = (t: string) => {
   $("genText").textContent = t;
@@ -415,7 +449,6 @@ function describeError(err: unknown): string {
 }
 
 function wireUI(): void {
-  const drop = $("drop");
   const fileInput = $<HTMLInputElement>("file");
   const generate = $<HTMLButtonElement>("generate");
   const keyInput = $<HTMLInputElement>("meshyKey");
@@ -444,39 +477,80 @@ function wireUI(): void {
     refreshKeyStatus();
   });
 
-  const showImage = (file: File) => {
+  // --- 4-view slots: tap a slot to fill it; multi-select fills empty slots in order.
+  const slots = Array.from(document.querySelectorAll<HTMLButtonElement>(".viewslot"));
+  let targetSlot: ViewName | null = null;
+
+  const renderSlot = (name: ViewName) => {
+    const slot = slots.find((s) => s.dataset.view === name)!;
+    slot.querySelector("img")?.remove();
+    slot.querySelector(".vclear")?.remove();
+    const url = views[name];
+    slot.classList.toggle("filled", !!url);
+    if (url) {
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = `${name} view`;
+      slot.prepend(img);
+      const clear = document.createElement("span");
+      clear.className = "vclear";
+      clear.textContent = "✕";
+      clear.addEventListener("click", (e) => {
+        e.stopPropagation();
+        views[name] = null;
+        renderSlot(name);
+        generate.disabled = !views.front;
+      });
+      slot.append(clear);
+    }
+  };
+
+  const readInto = (file: File, name: ViewName) => {
     if (!file.type.startsWith("image/")) return;
     const reader = new FileReader();
     reader.onload = () => {
-      uploadedDataUrl = String(reader.result);
-      ($("preview") as HTMLImageElement).src = uploadedDataUrl;
-      $("drop-empty").hidden = true;
-      $("drop-filled").hidden = false;
-      $("filename").textContent = file.name;
-      generate.disabled = false;
+      views[name] = String(reader.result);
+      renderSlot(name);
+      generate.disabled = !views.front;
     };
     reader.readAsDataURL(file);
   };
 
-  drop.addEventListener("click", () => fileInput.click());
+  const placeFiles = (files: File[], preferred: ViewName | null) => {
+    const queue = [...files];
+    if (preferred && queue.length) readInto(queue.shift()!, preferred);
+    for (const name of VIEWS) {
+      if (!queue.length) break;
+      if (name === preferred || views[name]) continue;
+      readInto(queue.shift()!, name);
+    }
+  };
+
+  slots.forEach((slot) => {
+    const name = slot.dataset.view as ViewName;
+    slot.addEventListener("click", () => {
+      targetSlot = name;
+      fileInput.click();
+    });
+    slot.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      slot.classList.add("over");
+    });
+    slot.addEventListener("dragleave", () => slot.classList.remove("over"));
+    slot.addEventListener("drop", (e) => {
+      e.preventDefault();
+      slot.classList.remove("over");
+      placeFiles(Array.from(e.dataTransfer?.files ?? []), name);
+    });
+  });
   fileInput.addEventListener("change", () => {
-    const f = fileInput.files?.[0];
-    if (f) showImage(f);
-  });
-  drop.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    drop.classList.add("over");
-  });
-  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
-  drop.addEventListener("drop", (e) => {
-    e.preventDefault();
-    drop.classList.remove("over");
-    const f = e.dataTransfer?.files?.[0];
-    if (f) showImage(f);
+    placeFiles(Array.from(fileInput.files ?? []), targetSlot);
+    targetSlot = null;
+    fileInput.value = ""; // allow re-picking the same file
   });
 
   generate.addEventListener("click", () => {
-    if (!uploadedDataUrl) return;
+    if (!views.front) return;
     const p = provider();
     // Local feedback right where the user tapped, and scroll the viewer (which
     // holds the progress overlay) into view — on mobile it sits above the fold.
@@ -508,6 +582,20 @@ function wireUI(): void {
 
   $("exportPng").addEventListener("click", () => {
     captureNext = true;
+  });
+  $("downloadGlb").addEventListener("click", async () => {
+    if (!lastGlbUrl) return;
+    try {
+      const blob = await (await fetch(lastGlbUrl)).blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "device.glb";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert("Could not fetch the model file — the Colab session serving it may have stopped. Regenerate, then download.");
+    }
   });
   $("resetView").addEventListener("click", () => controls.reset());
 }
