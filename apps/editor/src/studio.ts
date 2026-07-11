@@ -353,7 +353,7 @@ async function gradioGenerate(target: string, token: string | null): Promise<voi
       const pre = await client.predict("/preprocess", [front, true, 0.85]);
       const processed = (pre.data as unknown[])[0];
       setGenText("Generating 3D… (free GPU may queue)");
-      const gen = await client.predict("/generate", [processed, 320]);
+      const gen = await client.predict("/generate", [processed, 512]);
       glb = findGlb(gen.data);
     }
     if (!glb) throw new Error(`No GLB returned from "${target}" — the app may have changed or be busy. See docs/GENERATION.md.`);
